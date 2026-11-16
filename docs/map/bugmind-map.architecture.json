@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "BugMind — from bug report to prevention rules",
+    "output": "docs/map/bugmind-map.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Kiramido1/bugmind.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "75ab8c2879c096876bde2b04a62ee1a815192cf7"
+    }
+  },
+  "components": [
+    { "id": "qa", "type": "external", "label": "QA engineer", "sublabel": "Arabic / English + images", "pos": [40, 40], "size": [150, 64] },
+    { "id": "ui", "type": "frontend", "label": "CLI & TUI", "sublabel": "Typer · Textual chat", "pos": [270, 40], "size": [150, 64],
+      "sources": [ { "path": "src/bugmind/cli.py", "line": 119, "end_line": 193, "label": "bugmind add" },
+                   { "path": "src/bugmind/tui/chat.py", "line": 620, "end_line": 698, "label": "chat analyze / save" } ] },
+    { "id": "guard", "type": "security", "label": "Input guard", "sublabel": "redact secrets · size cap", "pos": [500, 40], "size": [150, 64],
+      "sources": [ { "path": "src/bugmind/service.py", "line": 82, "end_line": 92 },
+                   { "path": "src/bugmind/security.py", "line": 40, "label": "redact_secrets" },
+                   { "path": "src/bugmind/images.py", "line": 72, "end_line": 88, "label": "image validation" } ] },
+    { "id": "service", "type": "backend", "label": "BugMindService", "sublabel": "prompt: template + rules", "pos": [730, 40], "size": [150, 64],
+      "sources": [ { "path": "src/bugmind/service.py", "line": 94, "end_line": 109, "label": "analyze" },
+                   { "path": "src/bugmind/analysis.py", "line": 64, "label": "build_system_prompt" } ] },
+    { "id": "adapters", "type": "backend", "label": "Provider adapters", "sublabel": "Claude · OpenCode · custom", "pos": [960, 40], "size": [150, 64],
+      "sources": [ { "path": "src/bugmind/providers/claude.py", "line": 51, "end_line": 67, "label": "claude argv" },
+                   { "path": "src/bugmind/providers/opencode.py", "line": 99, "label": "tools denied" },
+                   { "path": "src/bugmind/providers/process.py", "line": 83, "end_line": 90, "label": "exec, no shell" } ] },
+    { "id": "agent", "type": "external", "label": "AI agent CLI", "sublabel": "your logged-in agent", "tag": "tools disabled", "pos": [960, 220], "size": [150, 64],
+      "sources": [ { "path": "src/bugmind/providers/claude.py", "line": 53, "end_line": 61, "label": "--tools \"\"" } ] },
+    { "id": "validate", "type": "security", "label": "Response check", "sublabel": "Pydantic schema", "pos": [960, 400], "size": [150, 64],
+      "sources": [ { "path": "src/bugmind/analysis.py", "line": 173, "end_line": 180, "label": "parse_response" } ] },
+    { "id": "render", "type": "backend", "label": "Report renderer", "sublabel": "sandboxed Jinja2", "pos": [730, 400], "size": [150, 64],
+      "sources": [ { "path": "src/bugmind/templates.py", "line": 101, "end_line": 102, "label": "SandboxedEnvironment" },
+                   { "path": "src/bugmind/service.py", "line": 114, "end_line": 115, "label": "render report" } ] },
+    { "id": "store", "type": "database", "label": "Bug archive", "sublabel": "bugs.jsonl · reports/", "tag": "append-only", "pos": [500, 400], "size": [150, 64],
+      "sources": [ { "path": "src/bugmind/storage/bug_store.py", "line": 139, "end_line": 150, "label": "create" },
+                   { "path": "src/bugmind/service.py", "line": 119, "end_line": 150, "label": "save" } ] },
+    { "id": "knowledge", "type": "backend", "label": "Knowledge builder", "sublabel": "patterns · rules", "pos": [500, 220], "size": [150, 64],
+      "sources": [ { "path": "src/bugmind/knowledge.py", "line": 110, "label": "build_knowledge" },
+                   { "path": "src/bugmind/knowledge.py", "line": 63, "label": "assign_pattern_ids" } ] },
+    { "id": "memory", "type": "database", "label": "Prevention memory", "sublabel": "BACKEND_PREVENTION.md", "pos": [270, 220], "size": [150, 64],
+      "sources": [ { "path": "src/bugmind/knowledge.py", "line": 316, "end_line": 319, "label": "write_memory" } ] },
+    { "id": "export", "type": "backend", "label": "Export", "sublabel": "Downloads · .zip", "pos": [270, 400], "size": [150, 64],
+      "sources": [ { "path": "src/bugmind/export.py", "line": 52, "label": "export_knowledge" } ] },
+    { "id": "devs", "type": "external", "label": "Backend devs", "sublabel": "+ AI coding agents", "pos": [40, 220], "size": [150, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Your machine — local-first, no server", "wraps": ["ui", "guard", "service", "adapters", "agent", "validate", "render", "store", "knowledge", "memory", "export"] }
+  ],
+  "connections": [
+    { "id": "qa-describes", "from": "qa", "to": "ui", "label": "describes", "variant": "emphasis" },
+    { "id": "ui-raw", "from": "ui", "to": "guard", "label": "raw input", "variant": "emphasis" },
+    { "id": "guard-redacted", "from": "guard", "to": "service", "label": "redacted", "variant": "emphasis" },
+    { "id": "service-prompt", "from": "service", "to": "adapters", "label": "prompt", "variant": "emphasis" },
+    { "id": "adapters-agent", "from": "adapters", "to": "agent", "label": "argv + stdin", "variant": "security" },
+    { "id": "agent-answer", "from": "agent", "to": "validate", "label": "JSON answer" },
+    { "id": "validate-render", "from": "validate", "to": "render", "label": "validated" },
+    { "id": "render-store", "from": "render", "to": "store", "label": "QA saves", "variant": "emphasis" },
+    { "id": "store-derive", "from": "store", "to": "knowledge", "label": "derive" },
+    { "id": "knowledge-writes", "from": "knowledge", "to": "memory", "label": "writes" },
+    { "id": "memory-rules", "from": "memory", "to": "devs", "label": "rules", "variant": "emphasis" },
+    { "id": "memory-export", "from": "memory", "to": "export", "label": "on demand", "variant": "dashed" },
+    { "id": "knowledge-context", "from": "knowledge", "to": "service", "label": "context", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "rose", "title": "Goal", "items": ["Turn messy bug descriptions into clean English QA reports", "Spot recurring bug patterns across the archive", "Keep backend prevention rules current, each traceable to its bugs"] },
+    { "dot": "emerald", "title": "Learning loop", "items": ["A single unconfirmed bug yields only a candidate rule", "Recurrence or QA confirmation makes a rule active", "Known patterns and rules are sent with the next bug"] },
+    { "dot": "amber", "title": "Safety", "items": ["Secrets redacted before the agent sees anything", "Agent runs with tools disabled, via argv, never a shell", "AI output is schema-validated before it is stored"] },
+    { "dot": "cyan", "title": "Clarify, don't guess", "items": ["Missing facts become questions back to the QA engineer", "Endpoints, status codes and root causes are never invented"] }
+  ]
+}

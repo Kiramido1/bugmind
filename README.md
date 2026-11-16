@@ -13,7 +13,7 @@ Describe a bug in Arabic or English, and get a structured QA report. BugMind als
 
 <img src="docs/screenshots/report.png" alt="BugMind analyzing a privilege-escalation bug and producing a structured QA report" width="100%">
 
-[Install](#-install) · [Quick start](#-quick-start) · [Screenshots](#-screenshots) · [How it works](#-how-it-works) · [Commands](#-commands) · [Docs](#-documentation)
+[Install](#-install) · [Quick start](#-quick-start) · [Screenshots](#-screenshots) · [Project map](#-project-map) · [Commands](#-commands) · [Docs](#-documentation)
 
 </div>
 
@@ -27,6 +27,23 @@ BugMind uses the AI coding agent you already have (**Claude Code**, **OpenCode**
 4. **Keeps `BACKEND_PREVENTION.md` current.** These are rules for backend developers and AI coding agents, and each rule links back to the bugs it came from.
 
 It is **local-first**: no server, no database and no cloud account of its own. Bugs live in a JSONL file and knowledge lives in Markdown.
+
+## 🗺 Project map
+
+<a href="docs/map/bugmind-map.png"><img src="docs/map/bugmind-map.png" alt="BugMind project map: a QA engineer's bug flows through the input guard, BugMindService and the AI agent, is validated, rendered and archived, and the knowledge builder turns the archive into prevention rules for backend developers and AI coding agents"></a>
+
+**The goal:** every bug QA finds should become a rule that stops the same kind of bug from shipping again.
+
+1. **Capture.** A QA engineer describes the bug in the CLI or the chat, in Arabic or English, with screenshots if they have them.
+2. **Guard.** Secrets are redacted and the input is checked for size and valid image types before anything leaves the app.
+3. **Analyze.** `BugMindService` builds a prompt from your report template plus the patterns and rules already known. It sends the prompt to your agent (Claude Code, OpenCode or custom), which runs with **tools disabled** and is started with an argv, never a shell.
+4. **Validate and render.** The agent's JSON answer is checked against a Pydantic schema and rendered through a sandboxed Jinja2 template. If facts are missing, BugMind asks the QA engineer instead of guessing.
+5. **Archive.** When QA saves the report, it goes into an append-only `bugs.jsonl` with a Markdown copy of the report.
+6. **Learn.** The knowledge builder groups bugs into patterns and writes `BACKEND_PREVENTION.md` for backend developers and AI coding agents. It also feeds those rules back as context for the next bug, so every analysis knows what came before.
+
+<sub>Every box in the map links to the source lines it is based on. Open
+<a href="https://htmlpreview.github.io/?https://github.com/Kiramido1/bugmind/blob/main/docs/map/bugmind-map.html">the interactive map</a>
+(zoom, route tracing, dark mode) or see its spec, <a href="docs/map/bugmind-map.architecture.json"><code>bugmind-map.architecture.json</code></a>.</sub>
 
 ## ⚡ Install
 
@@ -129,21 +146,6 @@ Or just run `bugmind` and paste the bug into the chat. **Ctrl+V** pastes a scree
 - Secrets (tokens, passwords, `*_API_KEY=`…) are **redacted before anything reaches the agent**.
 - AI output is validated by Python (Pydantic) before it touches the knowledge base, and it cannot inject Markdown headings or forge rules.
 - The archive is append-only JSONL with file locking, atomic writes and revision history.
-
-## 🧠 How it works
-
-```mermaid
-flowchart LR
-    A["Bug text<br/>(Arabic / English)<br/>+ screenshots"] --> R[Redact secrets]
-    R --> P["Agent CLI<br/>Claude Code · OpenCode · custom<br/><i>no tools</i>"]
-    P --> V{"Validate JSON<br/>(Pydantic)"}
-    V -->|missing info| Q[Clarifying questions]
-    Q --> A
-    V -->|ok| T["Render report<br/>(Jinja2 template)"]
-    T --> S[("bugs.jsonl<br/>append-only")]
-    S --> K["Patterns & rules<br/>BACKEND_PREVENTION.md<br/>BUG_PATTERNS.md · STATISTICS.md"]
-    K -.context for next bug.-> P
-```
 
 ## 📖 Commands
 
