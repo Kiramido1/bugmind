@@ -1,0 +1,675 @@
+/* BugMind — calm, low-glare theme. Colours come from the active theme (bugmind-dark /
+   bugmind-light or any Textual theme); accents are used sparingly and borders are thin. */
+
+Screen {
+    background: $background;
+    layout: vertical;
+}
+
+/* ---------------------------------------------------------------- top bar */
+#topbar {
+    height: 1;
+    background: $background;
+    color: $foreground;
+    text-align: center;
+    border-bottom: none;
+}
+
+#body {
+    height: 1fr;
+    border-top: solid $panel;
+}
+
+/* ---------------------------------------------------------------- icon rail */
+#rail {
+    width: 5;
+    height: 1fr;
+    background: $background;
+    border-right: solid $panel;
+    padding: 1 0;
+}
+.rail-icon {
+    width: 100%;
+    height: 1;
+    margin-bottom: 1;
+    content-align: center middle;
+    color: $text-muted;
+}
+.rail-icon:hover {
+    color: $foreground;
+    background: $panel;
+}
+.rail-icon.-active {
+    color: $primary;
+    text-style: bold;
+}
+.rail-spacer {
+    height: 1fr;
+}
+
+/* ---------------------------------------------------------------- sidebar */
+#sidebar-pane {
+    width: 30;
+    height: 1fr;
+    background: $surface;
+    border-right: solid $panel;
+}
+#sidebar {
+    height: auto;
+    background: $surface;
+    border: none;
+    padding: 1 1;
+    scrollbar-size-vertical: 0;
+}
+#sidebar:focus {
+    background: $surface;
+}
+#sidebar > .option-list--option {
+    padding: 0 1;
+}
+#sidebar > .option-list--option-highlighted {
+    background: $primary 12%;
+    color: $foreground;
+    text-style: bold;
+}
+#sidebar:focus > .option-list--option-highlighted {
+    background: $primary 20%;
+}
+#sidebar > .option-list--option-disabled {
+    color: $text-muted 80%;
+    text-style: bold;
+}
+#sidebar > .option-list--separator {
+    color: $surface;
+}
+#recent-title {
+    height: 1;
+    padding: 0 2;
+    margin-top: 1;
+    color: $text-muted;
+    text-style: bold;
+}
+#recent {
+    height: 1fr;
+    background: $surface;
+    border: none;
+    padding: 0 1;
+    scrollbar-size-vertical: 1;
+}
+#recent > .option-list--option {
+    padding: 0 1;
+    margin-bottom: 1;
+}
+#recent > .option-list--option-highlighted {
+    background: $primary 12%;
+}
+#recent:focus > .option-list--option-highlighted {
+    background: $primary 20%;
+}
+#sidebar-new {
+    height: 3;
+    margin: 0 1 1 1;
+    padding: 0 1;
+    content-align: left middle;
+    color: $text-muted;
+    border: round $panel-lighten-1;
+}
+#sidebar-new:hover {
+    color: $primary;
+    border: round $primary 60%;
+}
+
+/* ---------------------------------------------------------------- main panel */
+#main {
+    width: 1fr;
+    padding: 0 2;
+    background: $surface;
+    border: solid $primary 45%;
+    border-title-color: $foreground;
+    border-title-style: bold;
+    border-subtitle-color: $warning;
+}
+
+/* ---------------------------------------------------------------- context */
+#context {
+    width: 34;
+    height: 1fr;
+    padding: 0 2;
+    background: $background;
+    border-left: solid $panel;
+    scrollbar-size-vertical: 1;
+}
+.ctx-head {
+    height: 1;
+    margin: 1 0;
+    text-style: bold;
+}
+.ctx-label {
+    height: 1;
+    margin-top: 1;
+    color: $text-muted;
+    text-style: bold;
+    border-top: none;
+}
+.ctx-card {
+    height: auto;
+    margin-top: 1;
+    padding: 0 1;
+    background: $panel 70%;
+    border: round $panel-lighten-1;
+}
+#context Static {
+    width: 100%;
+}
+
+/* ---------------------------------------------------------------- status bar */
+#statusbar {
+    height: 1;
+    background: $background;
+    border-top: none;
+    padding: 0 1;
+}
+#status-left {
+    width: 1fr;
+}
+#status-right {
+    width: auto;
+}
+
+.view-title {
+    height: 1;
+    margin: 1 0;
+    color: $primary;
+}
+
+/* ---------------------------------------------------------------- markdown */
+Markdown {
+    color: $foreground;
+}
+MarkdownBlock:dark > .code_inline {
+    background: $panel;
+    color: $primary-lighten-2;
+}
+MarkdownBlock:light > .code_inline {
+    background: $panel;
+    color: $primary-darken-1;
+}
+MarkdownFence {
+    background: $panel 60%;
+    border-left: solid $panel-lighten-2;
+}
+MarkdownHorizontalRule {
+    border-bottom: solid $panel-lighten-1;
+}
+
+/* ---------------------------------------------------------------- chat */
+#chat {
+    height: 1fr;
+}
+#chat-title {
+    height: 3;
+    margin: 1 0 0 0;
+    border-bottom: solid $panel;
+}
+#chat-mode {
+    width: auto;
+    height: 1;
+    padding: 0 2;
+    background: $panel;
+}
+#chat-draft {
+    width: 1fr;
+    height: 1;
+    padding: 0 2;
+}
+#cmd-chip {
+    width: auto;
+    height: 1;
+    padding: 0 1;
+    color: $text-muted;
+    background: $panel;
+}
+#cmd-chip:hover {
+    color: $primary;
+}
+#messages {
+    height: 1fr;
+    padding: 1 1 0 0;
+    scrollbar-size-vertical: 1;
+}
+
+/* welcome card */
+.hero {
+    height: auto;
+    margin: 1 0 1 0;
+    padding: 1 3;
+    background: $surface;
+    border: round $panel-lighten-1;
+}
+.hero-title {
+    height: 1;
+}
+.hero-sub {
+    color: $text-muted;
+    margin: 1 0;
+}
+.hero-stats {
+    height: auto;
+    margin-bottom: 1;
+}
+.stat-card {
+    width: 1fr;
+    max-width: 22;
+    height: 4;
+    margin-right: 2;
+    padding: 0 2;
+    content-align: left middle;
+    background: $panel 70%;
+    border-left: solid $primary 60%;
+}
+.hero-tips {
+    height: 1;
+}
+
+/* messages */
+.msg {
+    height: auto;
+    margin: 0 0 1 0;
+    padding: 0 2;
+    background: $surface;
+    border-left: solid $panel-lighten-2;
+}
+.msg-user {
+    background: $panel;
+    border-left: solid $panel-lighten-2;
+}
+.msg-user .msg-head {
+    color: $text-muted;
+}
+.msg-assistant {
+    background: transparent;
+    border-left: solid $success 60%;
+}
+.msg-assistant .msg-head {
+    color: $primary;
+}
+.msg-system {
+    background: $surface 60%;
+    border-left: solid $success 50%;
+}
+.msg-system .msg-head {
+    color: $success;
+}
+.msg-error {
+    background: $error 7%;
+    border-left: solid $error 70%;
+}
+.msg-error .msg-head {
+    color: $error;
+}
+.msg-head {
+    height: 1;
+    margin-top: 1;
+}
+.msg-body {
+    height: auto;
+    margin: 0 0 1 0;
+    padding: 0;
+    background: transparent;
+}
+.msg-actions {
+    height: auto;
+    margin: 0 0 1 0;
+}
+.msg-action {
+    height: 1;
+    border: none;
+    padding: 0 1;
+    margin-right: 1;
+    min-width: 8;
+    background: $panel;
+    color: $text-muted;
+}
+.msg-action:hover, .msg-action:focus {
+    background: $primary 30%;
+    color: $foreground;
+}
+.msg-action.-primary {
+    background: $primary 45%;
+    color: $foreground;
+    text-style: bold;
+}
+.msg-action.-warning {
+    background: $warning 30%;
+    color: $foreground;
+}
+.msg Markdown {
+    margin: 0;
+    padding: 0;
+}
+
+/* live streaming strip */
+#live {
+    height: 3;
+    margin-top: 1;
+    padding: 0 1;
+    background: $surface;
+    border-left: solid $warning 70%;
+}
+#spinner {
+    width: 6;
+    height: 1;
+    color: $warning;
+    background: transparent;
+}
+#live-text {
+    width: 1fr;
+    height: 2;
+}
+
+/* slash-command menu */
+#cmd-menu {
+    height: auto;
+    max-height: 11;
+    margin: 1 0 0 0;
+    padding: 0 1;
+    background: $surface;
+    border: round $panel-lighten-2;
+    scrollbar-size-vertical: 1;
+}
+#cmd-menu > .option-list--option-highlighted {
+    background: $primary 16%;
+    text-style: none;
+}
+
+#attach-bar {
+    height: auto;
+    margin-top: 1;
+    padding: 0 1;
+    background: $panel 60%;
+    border-left: solid $primary 60%;
+}
+
+/* composer */
+#composer-row {
+    height: auto;
+    margin-top: 1;
+    border-top: solid $panel-lighten-1;
+    border-bottom: solid $panel-lighten-1;
+}
+#composer-row:focus-within {
+    border-top: solid $primary 60%;
+    border-bottom: solid $primary 60%;
+}
+#prompt {
+    width: 2;
+    height: 1;
+    color: $primary;
+    text-style: bold;
+}
+#composer {
+    height: auto;
+    min-height: 1;
+    max-height: 10;
+    padding: 0;
+    border: none;
+    background: $surface;
+}
+#composer:focus {
+    border: none;
+    background: $surface;
+}
+#composer .text-area--cursor-line {
+    background: transparent;
+}
+#composer-hint {
+    height: 1;
+    padding: 0 2;
+    color: $text-muted;
+}
+
+/* ---------------------------------------------------------------- history */
+#history {
+    height: 1fr;
+}
+#history-filters {
+    height: 3;
+}
+#history-search {
+    width: 1fr;
+}
+#history-filters Select {
+    width: 24;
+    margin-left: 1;
+}
+#history-body {
+    height: 1fr;
+    margin-top: 1;
+}
+#history-table {
+    width: 1fr;
+    height: 1fr;
+    background: $background 40%;
+}
+#history-detail {
+    width: 56;
+    height: 1fr;
+    margin-left: 1;
+    padding: 0 2;
+    background: $surface;
+    border-left: solid $panel-lighten-2;
+}
+
+DataTable > .datatable--header {
+    background: $panel;
+    color: $text-muted;
+    text-style: bold;
+}
+DataTable > .datatable--cursor {
+    background: $primary 22%;
+    color: $foreground;
+}
+DataTable > .datatable--hover {
+    background: $primary 8%;
+}
+DataTable > .datatable--even-row {
+    background: $panel 20%;
+}
+
+/* ---------------------------------------------------------------- forms */
+ProvidersView, SettingsView, MemoryView {
+    height: 1fr;
+}
+MemoryView {
+    padding-right: 1;
+}
+.memory-actions {
+    height: auto;
+    margin-bottom: 1;
+}
+.memory-actions Button {
+    height: 1;
+    border: none;
+    padding: 0 1;
+    margin-right: 1;
+}
+.memory-md {
+    padding: 1 2;
+    background: $surface;
+}
+#providers-table {
+    height: auto;
+    max-height: 8;
+    margin-bottom: 1;
+}
+Input, Select > SelectCurrent {
+    background: $surface;
+    border: tall $panel;
+}
+Input:focus, Select:focus > SelectCurrent {
+    border: tall $primary 60%;
+}
+Label {
+    margin-top: 1;
+    color: $text-muted;
+}
+.buttons, .switch-row {
+    height: auto;
+    margin: 1 0;
+}
+.buttons Button {
+    margin-right: 2;
+}
+.switch-row Label {
+    margin: 1 0 0 1;
+}
+#settings-save {
+    margin-top: 1;
+}
+Button {
+    border: none;
+    height: 3;
+    background: $panel;
+    color: $foreground;
+}
+Button:hover {
+    background: $panel-lighten-1;
+}
+Button:focus {
+    text-style: bold;
+}
+Button.-primary {
+    background: $primary 22%;
+    color: $foreground;
+    text-style: bold;
+}
+Button.-primary:hover {
+    background: $primary 32%;
+}
+Button.-error {
+    background: $error 22%;
+    color: $foreground;
+}
+Button:disabled {
+    opacity: 50%;
+}
+Switch {
+    background: $surface;
+    border: tall $panel;
+}
+
+/* ---------------------------------------------------------------- templates */
+#templates {
+    height: 1fr;
+}
+#templates-left {
+    width: 44;
+}
+#templates-list {
+    height: 1fr;
+    background: $surface;
+    border: none;
+}
+#templates-list > .option-list--option-highlighted {
+    background: $primary 16%;
+}
+.tpl-buttons {
+    height: auto;
+    margin: 1 0 0 0;
+}
+.tpl-buttons Button {
+    min-width: 10;
+    margin-right: 1;
+}
+#templates-path {
+    height: auto;
+    margin-top: 1;
+}
+#templates-right {
+    width: 1fr;
+    margin-left: 1;
+}
+#tpl-bar {
+    height: 3;
+    margin-top: 1;
+}
+#tpl-status {
+    width: 1fr;
+    height: 3;
+    content-align: left middle;
+}
+#tpl-bar Button {
+    margin-left: 1;
+    min-width: 14;
+}
+#tpl-work {
+    height: 1fr;
+}
+#tpl-editor {
+    width: 1fr;
+    height: 1fr;
+    border: round $panel-lighten-2;
+    background: $surface;
+}
+#tpl-editor:focus {
+    border: round $primary 60%;
+}
+#templates-preview {
+    width: 1fr;
+    height: 1fr;
+    padding: 0 2;
+    background: $surface;
+    border-left: solid $panel-lighten-2;
+}
+#templates.-editing #templates-preview {
+    margin-left: 1;
+}
+#tpl-error {
+    height: auto;
+    min-height: 1;
+    padding: 0 1;
+}
+
+/* ---------------------------------------------------------------- modals */
+ModalScreen {
+    align: center middle;
+    background: $background 75%;
+}
+#modal {
+    width: 66;
+    height: auto;
+    max-height: 90%;
+    padding: 1 2;
+    background: $surface;
+    border: round $panel-lighten-2;
+}
+#modal.bug-detail {
+    width: 110;
+    height: 90%;
+}
+#bug-body {
+    height: 1fr;
+    padding: 0 1;
+    background: $background 50%;
+}
+#modal.help {
+    width: 96;
+    overflow-y: auto;
+}
+.modal-title {
+    margin-bottom: 1;
+}
+#provider-options {
+    height: auto;
+    border: none;
+    margin-bottom: 1;
+    background: $surface;
+}
+#provider-options > .option-list--option-highlighted {
+    background: $primary 18%;
+}
+
+Toast {
+    background: $panel;
+    border-left: solid $primary 70%;
+}

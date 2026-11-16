@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+# Generated bug data and knowledge may contain sensitive information.
+data/
+bugmind-knowledge-*/
+*.zip
+.ruff_cache/
+.coverage
+htmlcov/
+.claude/
+.env
+.env.*
+attachments/
