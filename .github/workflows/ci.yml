@@ -42,9 +42,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install from checkout (Windows PowerShell 5.1)
+      - name: Install from checkout (Windows PowerShell 5.1, no uv/pipx so uv is bootstrapped)
         shell: powershell
         run: |
+          $env:Path = ($env:Path -split ";" | Where-Object {
+              $_ -and -not (Test-Path (Join-Path $_ "pipx.exe")) -and -not (Test-Path (Join-Path $_ "uv.exe")) }) -join ";"
           .\install.ps1
           bugmind --version
       - name: End-to-end with a fake agent (Arabic input, real subprocess, real storage)

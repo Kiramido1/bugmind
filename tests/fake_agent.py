@@ -18,7 +18,7 @@ import sys
 import time
 
 mode = os.environ.get("FAKE_AGENT_MODE", "bug")
-raw = sys.stdin.read() if mode != "file" else ""
+raw = sys.stdin.buffer.read().decode("utf-8") if mode != "file" else ""  # agents speak UTF-8 on every OS
 if mode == "sleep":
     time.sleep(30)
 if mode == "fail":
@@ -36,7 +36,7 @@ if mode == "garbage":
 
 req = json.loads(raw) if raw.strip().startswith("{") else {"prompt": raw}
 if os.environ.get("FAKE_AGENT_RECORD"):  # lets tests inspect exactly what reached the agent
-    with open(os.environ["FAKE_AGENT_RECORD"], "w") as fh:
+    with open(os.environ["FAKE_AGENT_RECORD"], "w", encoding="utf-8") as fh:
         json.dump({"images": [{k: v for k, v in i.items() if k != "data_base64"} | {"bytes": len(i["data_base64"])}
                               for i in req.get("images", [])], "prompt": req.get("prompt", "")}, fh)
 assert "untrusted" in req.get("system", "") or mode in ("question",), "system prompt missing"

@@ -22,6 +22,11 @@ function Run {  # run a native command; fail on a non-zero exit code (PowerShell
     & $exe @rest
     if ($LASTEXITCODE -ne 0) { Die "'$exe $rest' failed with exit code $LASTEXITCODE" }
 }
+function Quiet {  # run a native command, ignore its stderr and exit code (PowerShell 5 would turn stderr into a fatal error)
+    $ErrorActionPreference = "SilentlyContinue"
+    $exe, $rest = $args
+    & $exe @rest 2>$null
+}
 
 # uv and pipx put tools in ~\.local\bin; make it usable in this session right away.
 $Bin = Join-Path $HOME ".local\bin"
@@ -36,8 +41,8 @@ if ($Here -and (Select-String -Quiet -Pattern '^name = "bugmind"' -Path (Join-Pa
 }
 
 if ($Uninstall) {
-    if ((Has uv) -and ((uv tool list 2>$null) -match "^bugmind ")) { Run uv tool uninstall bugmind }
-    elseif ((Has pipx) -and ((pipx list --short 2>$null) -match "^bugmind ")) { Run pipx uninstall bugmind }
+    if ((Has uv) -and ((Quiet uv tool list) -match "^bugmind ")) { Run uv tool uninstall bugmind }
+    elseif ((Has pipx) -and ((Quiet pipx list --short) -match "^bugmind ")) { Run pipx uninstall bugmind }
     else { Die "bugmind is not installed with uv or pipx." }
     Ok "Removed the bugmind command."
     Write-Host "Your data was kept: $env:APPDATA\bugmind  $env:LOCALAPPDATA\bugmind" -ForegroundColor DarkGray
@@ -59,13 +64,13 @@ if (Has uv) {
     # uv downloads a managed Python 3.12+ itself when none (or an older one) is installed.
     if ($Source -eq $Here) { Run uv tool install --force --editable $Source }
     else { Run uv tool install --force --reinstall $Source }
-    uv tool update-shell 2>$null | Out-Null  # adds ~\.local\bin to the user PATH for new terminals
+    Quiet uv tool update-shell | Out-Null  # adds ~\.local\bin to the user PATH for new terminals
 } else {
     if (-not (Has python) -or (python -c "import sys; print(sys.version_info >= (3, 12))") -ne "True") {
         Die "BugMind needs Python 3.12+. Install uv (it brings its own Python) and run this again."
     }
     Run pipx install --force $Source
-    pipx ensurepath 2>$null | Out-Null
+    Quiet pipx ensurepath | Out-Null
 }
 
 if (-not (Has bugmind)) { Die "Installed, but 'bugmind' is not on PATH. Add $Bin to PATH and open a new terminal." }
