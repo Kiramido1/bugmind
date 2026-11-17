@@ -160,7 +160,7 @@ class BugMindService:
             fresh = load_image(img.path)  # the file may have changed since it was attached
             target = dest / f"{n}{EXTENSIONS[fresh.media_type]}"
             shutil.copyfile(fresh.path, target)
-            out.append(str(target.relative_to(self.store.layout.root)))
+            out.append(target.relative_to(self.store.layout.root).as_posix())  # portable across OSes
         return out
 
     def set_status(self, bug_id: str, status: ConfirmationStatus, note: str = "") -> BugRecord:
