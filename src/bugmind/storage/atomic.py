@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import errno
-import fcntl
 import os
 import shutil
 import tempfile
@@ -12,13 +11,34 @@ from datetime import datetime, UTC
 from pathlib import Path
 from types import TracebackType
 
+if os.name == "nt":
+    import msvcrt
+
+    def _try_lock(fd: int) -> None:  # locks byte 0 of the lock file; raises OSError when another process holds it
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+
+    def _unlock(fd: int) -> None:
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _try_lock(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _unlock(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+_BINARY = getattr(os, "O_BINARY", 0)  # Windows: no CRLF translation on raw writes
+
 
 class LockTimeout(Exception):
     pass
 
 
 class FileLock:
-    """Exclusive advisory lock (fcntl.flock) on a lock file, with timeout.
+    """Exclusive lock (fcntl.flock / msvcrt.locking) on a lock file, with timeout.
 
     Safe across processes (two `bugmind` instances) and re-entrant within one
     FileLock object.
@@ -40,10 +60,10 @@ class FileLock:
         deadline = time.monotonic() + self.timeout
         while True:
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                _try_lock(fd)
                 break
             except OSError as exc:
-                if exc.errno not in (errno.EAGAIN, errno.EACCES):
+                if exc.errno not in (errno.EAGAIN, errno.EACCES, errno.EDEADLK):  # EDEADLK: msvcrt busy
                     os.close(fd)
                     raise
                 if time.monotonic() >= deadline:
@@ -60,7 +80,7 @@ class FileLock:
         if self._depth > 0:
             return
         try:
-            fcntl.flock(self._fd, fcntl.LOCK_UN)
+            _unlock(self._fd)
         finally:
             os.close(self._fd)
             self._fd = None
@@ -86,6 +106,18 @@ def _fsync_dir(directory: Path) -> None:
         os.close(fd)
 
 
+def _replace(src: str, dst: Path) -> None:
+    """os.replace, retried on Windows where a reader holding *dst* open makes it fail briefly."""
+    for attempt in range(50):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if os.name != "nt" or attempt == 49:
+                raise
+            time.sleep(0.02)
+
+
 def atomic_write_text(path: Path, text: str, mode: int = 0o600) -> None:
     """Write *text* to *path* atomically (temp file + fsync + rename)."""
     path = Path(path)
@@ -97,7 +129,7 @@ def atomic_write_text(path: Path, text: str, mode: int = 0o600) -> None:
             fh.flush()
             os.fsync(fh.fileno())
         os.chmod(tmp, mode)
-        os.replace(tmp, path)
+        _replace(tmp, path)
         _fsync_dir(path.parent)
     except BaseException:
         try:
@@ -124,7 +156,7 @@ def append_line_durable(path: Path, line: str) -> None:
             fh.seek(-1, os.SEEK_END)
             if fh.read(1) != b"\n":
                 prefix = "\n"
-    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | _BINARY, 0o600)
     try:
         os.write(fd, (prefix + line + "\n").encode("utf-8"))
         os.fsync(fd)

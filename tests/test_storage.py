@@ -1,6 +1,7 @@
 import json
 import multiprocessing as mp
 import os
+import sys
 import time
 
 import pytest
@@ -46,14 +47,14 @@ def test_update_appends_revision_and_never_overwrites_evidence(tmp_path):
     assert new.status == ConfirmationStatus.CONFIRMED
     hist = store.history("BUG-0001")
     assert [h.revision for h in hist] == [1, 2] and hist[0].analysis.title == "T original description"
-    lines = store.layout.bugs_file.read_text().splitlines()
+    lines = store.layout.bugs_file.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2  # append-only
 
 
 def test_corrupt_lines_are_reported_not_fatal_and_ids_not_reused(tmp_path):
     store = BugStore(tmp_path)
     store.create(lambda i: make(i, "good"))
-    with open(store.layout.bugs_file, "a") as fh:
+    with open(store.layout.bugs_file, "a", encoding="utf-8", newline="") as fh:
         fh.write('{"id": "BUG-0002", "original_input": "trunc')  # crash mid-write, no newline
     store = BugStore(tmp_path)
     assert [r.id for r in store.all()] == ["BUG-0001"]
@@ -67,16 +68,17 @@ def test_invalid_record_fails_validation_before_write(tmp_path):
     store = BugStore(tmp_path)
     with pytest.raises(ValueError):
         store.create(lambda i: make("BUG-0042"))
-    assert store.layout.bugs_file.read_text() == ""
+    assert store.layout.bugs_file.read_text(encoding="utf-8") == ""
 
 
 def test_atomic_write_replaces_and_leaves_no_temp_files(tmp_path):
     target = tmp_path / "f.md"
     atomic_write_text(target, "one")
     atomic_write_text(target, "two")
-    assert target.read_text() == "two"
+    assert target.read_text(encoding="utf-8") == "two"
     assert [p.name for p in tmp_path.iterdir()] == ["f.md"]
-    assert oct(target.stat().st_mode & 0o777) == "0o600"
+    if os.name != "nt":  # Windows has no POSIX permission bits
+        assert oct(target.stat().st_mode & 0o777) == "0o600"
 
 
 def test_atomic_write_failure_keeps_old_content(tmp_path, monkeypatch):
@@ -89,7 +91,7 @@ def test_atomic_write_failure_keeps_old_content(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "replace", boom)
     with pytest.raises(OSError):
         atomic_write_text(target, "partial")
-    assert target.read_text() == "safe"
+    assert target.read_text(encoding="utf-8") == "safe"
     assert [p.name for p in tmp_path.iterdir()] == ["f.md"]
 
 
@@ -100,7 +102,7 @@ def test_backup_rotation(tmp_path):
         backup_file(f, tmp_path / "bk", keep=3)
         time.sleep(0.001)
     backups = sorted((tmp_path / "bk").iterdir())
-    assert len(backups) == 3 and backups[-1].read_text() == "4"
+    assert len(backups) == 3 and backups[-1].read_text(encoding="utf-8") == "4"
 
 
 def _hold_lock(path, ready, release):
@@ -110,11 +112,11 @@ def _hold_lock(path, ready, release):
 
 
 def test_file_lock_excludes_other_processes(tmp_path):
-    ctx = mp.get_context("fork")
+    ctx = mp.get_context("spawn" if sys.platform == "win32" else "fork")
     ready, release = ctx.Event(), ctx.Event()
     p = ctx.Process(target=_hold_lock, args=(tmp_path / "l", ready, release))
     p.start()
-    assert ready.wait(5)
+    assert ready.wait(30)  # Windows spawns a fresh interpreter
     with pytest.raises(LockTimeout):
         FileLock(tmp_path / "l", timeout=0.3).acquire()
     release.set()
@@ -138,7 +140,7 @@ def _create_many(root, n):
 
 
 def test_concurrent_processes_get_unique_ids(tmp_path):
-    ctx = mp.get_context("fork")
+    ctx = mp.get_context("spawn" if sys.platform == "win32" else "fork")
     procs = [ctx.Process(target=_create_many, args=(tmp_path, 10)) for _ in range(4)]
     for p in procs:
         p.start()
@@ -148,7 +150,7 @@ def test_concurrent_processes_get_unique_ids(tmp_path):
     ids = [r.id for r in store.all()]
     assert len(ids) == 40 and len(set(ids)) == 40
     assert not store.corrupt_records()
-    for line in store.layout.bugs_file.read_text().splitlines():
+    for line in store.layout.bugs_file.read_text(encoding="utf-8").splitlines():
         json.loads(line)
 
 

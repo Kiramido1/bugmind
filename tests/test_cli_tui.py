@@ -140,10 +140,13 @@ def _install_fake_cli(tmp_path, monkeypatch, name):
     import os
     bindir = tmp_path / "bin"
     bindir.mkdir(exist_ok=True)
-    exe = bindir / name
-    exe.write_text("#!/bin/sh\nexit 0\n")
-    exe.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
+    if sys.platform == "win32":
+        (bindir / f"{name}.cmd").write_text("@exit /b 0\r\n", encoding="utf-8")
+    else:
+        exe = bindir / name
+        exe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        exe.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
 
 async def test_installed_agent_is_used_automatically(tmp_path, monkeypatch):

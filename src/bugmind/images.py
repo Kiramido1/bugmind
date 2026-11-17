@@ -23,7 +23,7 @@ _MAGIC = [
 
 # Paths as GNOME Terminal pastes them on drag & drop ('quoted' when they contain spaces) or typed.
 _PATH_RE = re.compile(
-    r"""'([^'\n]+\.(?:png|jpe?g|gif|webp))'|"([^"\n]+\.(?:png|jpe?g|gif|webp))"|((?:~|/)[^\s'"]+\.(?:png|jpe?g|gif|webp))""",
+    r"""'([^'\n]+\.(?:png|jpe?g|gif|webp))'|"([^"\n]+\.(?:png|jpe?g|gif|webp))"|((?:~|/|[A-Za-z]:[\\/])[^\s'"]+\.(?:png|jpe?g|gif|webp))""",
     re.IGNORECASE)
 
 
@@ -133,18 +133,18 @@ def _clipboard_tools() -> tuple[list[str], list[str]] | None:
     return None
 
 
-def _run(argv: list[str]) -> bytes | None:
+def _run(argv: list[str], timeout: float = 3) -> bytes | None:
     import subprocess
     try:
-        out = subprocess.run(argv, capture_output=True, timeout=3, check=True, stdin=subprocess.DEVNULL)
+        out = subprocess.run(argv, capture_output=True, timeout=timeout, check=True, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout
 
 
 def paste_dir() -> Path:
-    import os
-    base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "bugmind" / "pastes"
+    from bugmind.config import cache_dir
+    base = cache_dir() / "pastes"
     base.mkdir(parents=True, exist_ok=True, mode=0o700)
     return base
 
@@ -160,15 +160,71 @@ def _save_paste(data: bytes, media: str) -> Attachment:
         except OSError:
             pass
     path = folder / f"clipboard-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{time.monotonic_ns() % 10**6}{EXTENSIONS[media]}"
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
     with os.fdopen(fd, "wb") as fh:
         fh.write(data)
     return load_image(path)  # same validation as any other image
 
 
+def _paste_image(data: bytes, media: str) -> Attachment:
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ImageError(f"Clipboard image is {len(data) / 1048576:.1f} MB; the limit is "
+                         f"{MAX_IMAGE_BYTES // 1048576} MB.")
+    if sniff(data[:16]) is None:
+        raise ImageError("The clipboard image is not a PNG, JPEG, GIF or WebP.")
+    return _save_paste(data, sniff(data[:16]) or media)
+
+
+def _image_files(paths: list[str]) -> list[Attachment]:
+    images = []
+    for f in paths:
+        try:
+            images.append(load_image(f))
+        except ImageError:
+            continue  # a copied non-image file falls through to text paste
+    return images
+
+
+# Fixed script, no user data: prints a kind line, then base64 payload lines (ASCII survives any console code page).
+_PS_CLIPBOARD = r"""
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+$c = [Windows.Forms.Clipboard]
+$b64 = { param($s) [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($s)) }
+if ($c::ContainsImage()) {
+  $m = New-Object IO.MemoryStream; $c::GetImage().Save($m, [Drawing.Imaging.ImageFormat]::Png)
+  'image'; [Convert]::ToBase64String($m.ToArray())
+} elseif ($c::ContainsFileDropList()) { 'files'; foreach ($f in $c::GetFileDropList()) { & $b64 $f } }
+elseif ($c::ContainsText()) { 'text'; & $b64 $c::GetText() }
+"""
+
+
+def _read_clipboard_windows() -> tuple[list[Attachment], str | None]:
+    import os
+    ps = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "WindowsPowerShell", "v1.0",
+                      "powershell.exe")
+    out = _run([ps, "-NoProfile", "-NonInteractive", "-Sta", "-Command", _PS_CLIPBOARD], timeout=10)
+    lines = (out or b"").decode("ascii", "replace").split()
+    if not lines:
+        return [], None
+    try:
+        items = [base64.b64decode(x) for x in lines[1:]]
+    except ValueError:
+        return [], None
+    if lines[0] == "image" and items:
+        return [_paste_image(items[0], "image/png")], None
+    if lines[0] == "files" and (images := _image_files([i.decode("utf-8", "replace") for i in items])):
+        return images, None
+    if lines[0] == "text" and items:
+        return [], items[0].decode("utf-8", "replace")
+    return [], None
+
+
 def read_clipboard() -> tuple[list[Attachment], str | None]:
     """What Ctrl+V should insert: (images, None) for an image or copied image files, ([], text) for
     text, ([], None) when the clipboard is empty/unavailable. Raises ImageError for a bad image."""
+    import sys
+    if sys.platform == "win32":
+        return _read_clipboard_windows()
     tools = _clipboard_tools()
     if tools is None:
         return [], None
@@ -179,24 +235,13 @@ def read_clipboard() -> tuple[list[Attachment], str | None]:
             data = _run([*read_argv, media])
             if not data:
                 break
-            if len(data) > MAX_IMAGE_BYTES:
-                raise ImageError(f"Clipboard image is {len(data) / 1048576:.1f} MB; the limit is "
-                                 f"{MAX_IMAGE_BYTES // 1048576} MB.")
-            if sniff(data[:16]) is None:
-                raise ImageError("The clipboard image is not a PNG, JPEG, GIF or WebP.")
-            return [_save_paste(data, sniff(data[:16]) or media)], None
+            return [_paste_image(data, media)], None
     for kind in _FILE_LIST_TYPES:
         if kind in types:
             from urllib.parse import unquote, urlparse
             raw = (_run([*read_argv, kind]) or b"").decode("utf-8", "replace")
             files = [unquote(urlparse(ln.strip()).path) for ln in raw.splitlines() if ln.strip().startswith("file://")]
-            images = []
-            for f in files:
-                try:
-                    images.append(load_image(f))
-                except ImageError:
-                    continue  # a copied non-image file falls through to text paste
-            if images:
+            if images := _image_files(files):
                 return images, None
     for kind in ("UTF8_STRING", "text/plain;charset=utf-8", "text/plain", "STRING", "TEXT"):
         if kind in types:

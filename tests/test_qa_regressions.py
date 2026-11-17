@@ -93,8 +93,8 @@ def test_zip_export_never_deletes_an_existing_package_dir(tmp_path, monkeypatch)
 def test_missing_template_is_a_clean_error_not_a_traceback(monkeypatch, capsys):
     custom_agent()
     from bugmind.config import config_path
-    text = config_path().read_text().replace("default/professional", "nosuch/tpl")
-    config_path().write_text(text)
+    text = config_path().read_text(encoding="utf-8").replace("default/professional", "nosuch/tpl")
+    config_path().write_text(text, encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["bugmind", "add", "GET /x returns 500"])
     from bugmind.cli import main
     with pytest.raises(SystemExit) as e:
@@ -219,7 +219,7 @@ def test_downloads_dir_reads_xdg_user_dirs(tmp_path, monkeypatch):
 
     from bugmind.export import downloads_dir
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    (tmp_path / "user-dirs.dirs").write_text('XDG_DOWNLOAD_DIR="$HOME/Téléchargements"\n')
+    (tmp_path / "user-dirs.dirs").write_text('XDG_DOWNLOAD_DIR="$HOME/Téléchargements"\n', encoding="utf-8")
     assert downloads_dir() == Path.home() / "Téléchargements"
     (tmp_path / "user-dirs.dirs").write_text("# nothing\n")
     assert downloads_dir() == Path.home() / "Downloads"
@@ -246,7 +246,7 @@ async def test_tui_save_rules_to_downloads(tmp_path, monkeypatch):
         await pilot.pause(0.3)
         await pilot.click("#rules .mem-download")
         await pilot.pause(0.2)
-        assert (tmp_path / "dl" / "BACKEND_PREVENTION.md").read_text().startswith("# Backend Engineering")
+        assert (tmp_path / "dl" / "BACKEND_PREVENTION.md").read_text(encoding="utf-8").startswith("# Backend Engineering")
         app.action_show("chat")
         app.query_one(Composer).insert("/export")  # defaults to the prevention instructions
         await pilot.press("enter")

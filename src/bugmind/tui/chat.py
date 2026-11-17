@@ -8,6 +8,7 @@ from datetime import datetime
 
 from textual import events, on, work
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.message import Message
@@ -115,6 +116,9 @@ class Composer(TextArea):
             super().__init__()
             self.text = text
 
+    # Windows Terminal keeps Ctrl+V for its own text paste, so screenshots need another key there.
+    BINDINGS = [Binding("alt+v", "paste", "Paste image", show=False)]
+
     chat: ChatView | None = None
 
     def __init__(self, *a, **kw) -> None:
@@ -159,7 +163,7 @@ class Composer(TextArea):
         elif text:
             self.insert(text)
         else:
-            self.app.notify("The clipboard is empty (or no xclip / wl-paste is installed).", severity="warning")
+            self.app.notify("The clipboard is empty (on Linux, install wl-clipboard or xclip).", severity="warning")
 
     async def _on_paste(self, event: events.Paste) -> None:
         # Terminal paste (Ctrl+Shift+V, drag & drop) of nothing but image paths -> attach right away.

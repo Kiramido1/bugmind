@@ -403,6 +403,10 @@ def main() -> None:
 
     from bugmind.storage.atomic import LockTimeout
     from bugmind.templates import TemplateNotFound
+    if sys.platform == "win32":  # piped/redirected output defaults to the ANSI code page, which has no Arabic
+        for stream in (sys.stdout, sys.stderr):
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
     try:
         app()
     except (OSError, LockTimeout, TemplateNotFound, TemplateError) as exc:

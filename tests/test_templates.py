@@ -68,11 +68,11 @@ def test_save_validates_and_never_touches_builtins(tmp_path):
     from bugmind.templates import BUILTIN_DIR, TemplateValidationError
     eng = TemplateEngine(tmp_path / "user")
     builtin = BUILTIN_DIR / "default" / "professional_en.md"
-    before = builtin.read_text()
+    before = builtin.read_text(encoding="utf-8")
     text = before.replace("**Bug Title:**", "**Title:**")
     path = eng.save_user_template("default/professional", text)
     assert path == tmp_path / "user" / "default" / "professional_en.md"
-    assert builtin.read_text() == before  # built-in untouched
+    assert builtin.read_text(encoding="utf-8") == before  # built-in untouched
     tpl = eng.resolve("default/professional")
     assert eng.is_user_template(tpl) and "**Title:**" in eng.render(tpl, BugAnalysis(title="x"))
     for bad in ("{{ nope }}", "{% if title %}x", "---\nname: [\n---\nbody", "---\nname: x\n---\n  "):
@@ -110,7 +110,7 @@ async def test_tui_template_editor_saves_user_copy(tmp_path):
         await pilot.press("ctrl+s")
         await pilot.pause(0.3)
         saved = config_dir() / "templates" / "default" / "professional_en.md"
-        assert saved.exists() and "**Severity:** {{ severity }}" in saved.read_text()
+        assert saved.exists() and "**Severity:** {{ severity }}" in saved.read_text(encoding="utf-8")
         assert view.editing_id is None
         # invalid edits are refused
         await pilot.click("#tpl-edit")
@@ -118,4 +118,4 @@ async def test_tui_template_editor_saves_user_copy(tmp_path):
         app.query_one("#tpl-editor", TextArea).insert("{{ broken")
         await pilot.press("ctrl+s")
         await pilot.pause(0.2)
-        assert view.editing_id is not None and "{{ broken" not in saved.read_text()
+        assert view.editing_id is not None and "{{ broken" not in saved.read_text(encoding="utf-8")
