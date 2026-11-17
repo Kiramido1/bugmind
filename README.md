@@ -47,11 +47,21 @@ It is **local-first**: no server, no database and no cloud account of its own. B
 
 ## ⚡ Install
 
-**One command** (Linux; installs for your user only, no `sudo`):
+**One command.** It installs for your user only, with no `sudo` or administrator rights.
+
+**Linux:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Kiramido1/bugmind/main/install.sh | sh
 ```
+
+**Windows 10/11** (in PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/Kiramido1/bugmind/main/install.ps1 | iex
+```
+
+Open a new terminal afterwards so `bugmind` is on your PATH. See the [Windows install guide](docs/INSTALL.md#windows) for details.
 
 Then:
 
@@ -82,15 +92,24 @@ curl -fsSL https://raw.githubusercontent.com/Kiramido1/bugmind/main/install.sh |
 curl -fsSL https://raw.githubusercontent.com/Kiramido1/bugmind/main/install.sh | sh -s -- --uninstall
 ```
 
+```powershell
+# Windows: from a clone, or update by running the one-liner again
+git clone https://github.com/Kiramido1/bugmind; cd bugmind; .\install.ps1
+
+# Windows: pin a branch or tag, or uninstall (your bugs and rules are kept)
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Kiramido1/bugmind/main/install.ps1))) -Ref v0.1.0
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Kiramido1/bugmind/main/install.ps1))) -Uninstall
+```
+
 **What the installer does:**
 - It uses `uv`, or `pipx` if that is what you have.
 - If you have neither, it downloads `uv` into `~/.local/bin`. Pass `--no-uv-bootstrap` to refuse that.
 - uv provides Python 3.12+ itself if your system Python is older.
-- It never uses `sudo` and never touches system packages.
+- It never uses `sudo` or administrator rights and never touches system packages.
 
 </details>
 
-**Requirements:** Linux, and at least one agent CLI that is logged in:
+**Requirements:** Linux or Windows 10/11, and at least one agent CLI that is logged in:
 - [Claude Code](https://docs.claude.com/en/docs/claude-code): run `claude`, then `/login`.
 - [OpenCode](https://opencode.ai): run `opencode auth login`.
 - Any executable that follows the [custom-agent contract](docs/PROVIDERS.md#custom-agent).
@@ -108,7 +127,7 @@ bugmind memory                          # the prevention rules
 bugmind export prevention --downloads   # BACKEND_PREVENTION.md → ~/Downloads
 ```
 
-Or just run `bugmind` and paste the bug into the chat. **Ctrl+V** pastes a screenshot directly.
+Or just run `bugmind` and paste the bug into the chat. **Ctrl+V** pastes a screenshot directly (**Alt+V** in Windows Terminal, which keeps Ctrl+V for itself).
 
 ## 📸 Screenshots
 
@@ -124,7 +143,7 @@ Or just run `bugmind` and paste the bug into the chat. **Ctrl+V** pastes a scree
 
 **Analysis**
 - Input can be Arabic, English or mixed, and **the output is always English**. The original text is kept word for word.
-- **Screenshots** are passed to the agent as images and validated by their content (PNG, JPEG, GIF or WebP, up to 5 MB). You can attach them with `Ctrl+V`, drag and drop, `/attach` or `bugmind add -i`.
+- **Screenshots** are passed to the agent as images and validated by their content (PNG, JPEG, GIF or WebP, up to 5 MB). You can attach them with `Ctrl+V` (`Alt+V` on Windows), drag and drop, `/attach` or `bugmind add -i`.
 - **Clarification loop:** when evidence is missing, BugMind asks questions instead of filling in the gaps.
 - **Fast by default:** Claude Code runs as `sonnet` with `--effort low`. On a typical bug this took analysis from ~30 s to ~13 s at a third of the cost, with the same report quality.
 
@@ -169,7 +188,7 @@ Or just run `bugmind` and paste the bug into the chat. **Ctrl+V** pastes a scree
 | Key | Action |
 |---|---|
 | `Enter` / `Shift+Enter` (or `Ctrl+J`) | Send / new line |
-| `Ctrl+V` | Paste a screenshot or text from the clipboard |
+| `Ctrl+V` / `Alt+V` | Paste a screenshot or text from the clipboard (use `Alt+V` in Windows Terminal) |
 | `Ctrl+P` · `Ctrl+N` · `Ctrl+B` | Switch provider · new chat · bug-analysis mode |
 | `Ctrl+H` / `F3` · `F2` | History · toggle sidebar |
 | `↑` / `↓` | Recall sent messages |
@@ -194,7 +213,8 @@ bugmind config set analysis.auto_save never        # complete (default) | always
 bugmind config path                                # where config and data live
 ```
 
-Config lives in `~/.config/bugmind/config.yaml` and data in `~/.local/share/bugmind/<project>/`. Both respect the XDG
+Config lives in `~/.config/bugmind/config.yaml` and data in `~/.local/share/bugmind/<project>/`
+(on Windows: `%APPDATA%\bugmind\config.yaml` and `%LOCALAPPDATA%\bugmind\<project>\`). Both respect the XDG
 variables, and `BUGMIND_CONFIG_DIR` / `BUGMIND_DATA_DIR` override them for separate workspaces.
 See the [CLI reference](docs/CLI.md#bugmind-config) for every key.
 
@@ -216,12 +236,12 @@ See the [CLI reference](docs/CLI.md#bugmind-config) for every key.
 ```bash
 git clone https://github.com/Kiramido1/bugmind && cd bugmind
 make dev        # .venv with BugMind + pytest + ruff
-make check      # lint + 108 tests (no AI credentials needed; uses tests/fake_agent.py)
+make check      # lint + the test suite (no AI credentials needed; uses tests/fake_agent.py)
 make run        # open the TUI from the checkout
 make help       # all targets
 ```
 
-CI runs lint and tests on Python 3.12 and 3.13, and it also tests the installer.
+CI runs lint and tests on Linux and Windows with Python 3.12 and 3.13. It also tests both installers and runs an end-to-end bug on Windows.
 
 ## ⚠️ Known limitations
 
@@ -231,6 +251,7 @@ CI runs lint and tests on Python 3.12 and 3.13, and it also tests the installer.
 - **Cross-language duplicates:** duplicate detection compares text, so the same bug described in two languages isn't caught.
 - **Input size:** bug descriptions are capped at 100,000 characters so an accidental huge paste isn't sent to a paid agent.
 - **OpenCode streaming:** OpenCode streams in larger chunks than Claude Code.
+- **Windows agents installed with npm** (`claude.cmd`, `opencode.cmd`) run through `cmd.exe`, so BugMind refuses to pass them a screenshot path containing `" % ! ^ & | < >`. Rename the file, or use the agent's native `.exe` installer.
 
 ## 📄 License
 

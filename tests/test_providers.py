@@ -5,6 +5,7 @@ import json
 import os
 import stat
 import sys
+import tempfile
 import textwrap
 
 import pytest
@@ -21,8 +22,13 @@ REQ = ProviderRequest(system_prompt="SYS untrusted rules", prompt="PROMPT body",
 
 
 def script(tmp_path, name, body):
+    """A fake agent CLI: an executable script on POSIX, a .cmd shim (like npm's) on Windows."""
     path = tmp_path / name
-    path.write_text(f"#!{sys.executable}\n" + textwrap.dedent(body))
+    path.write_text(f"#!{sys.executable}\n" + textwrap.dedent(body), encoding="utf-8")
+    if sys.platform == "win32":
+        shim = tmp_path / f"{name}.cmd"
+        shim.write_text(f'@"{sys.executable}" "{path}" %*\r\n', encoding="utf-8")
+        return str(shim)
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
     return str(path)
 
@@ -78,7 +84,7 @@ async def test_custom_file_mode_and_no_shell_interpolation(tmp_path):
     res = await p.run(ProviderRequest("s", "hello; rm -rf ~", timeout=10))
     assert "prompt=hello; rm -rf ~" in res.text
     assert "$(touch" in res.text and not marker.exists()  # literal argument, never a shell
-    assert not any(n.startswith("bugmind-request-") for n in os.listdir(os.environ.get("TMPDIR", "/tmp"))
+    assert not any(n.startswith("bugmind-request-") for n in os.listdir(tempfile.gettempdir())
                    if n.endswith(".json") and (tmp_path / n).exists())
 
 
@@ -185,7 +191,17 @@ async def test_opencode_error_event_with_exit_zero_is_an_error(tmp_path, monkeyp
 
 
 def _alive(pid: int) -> bool:
-    import os
+    if sys.platform == "win32":  # os.kill(pid, 0) would *terminate* the process on Windows
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32")
+        k32.OpenProcess.restype = ctypes.c_void_p
+        handle = k32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            return False
+        try:
+            return k32.WaitForSingleObject(ctypes.c_void_p(handle), 0) == 0x102  # WAIT_TIMEOUT: still running
+        finally:
+            k32.CloseHandle(ctypes.c_void_p(handle))
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -200,11 +216,15 @@ async def test_timeout_kills_background_child_even_if_leader_exited(tmp_path):
     from bugmind.providers.process import run_process
     pidfile = tmp_path / "pid"
     with pytest.raises(ProviderError) as e:
-        await run_process(["/bin/sh", "-c", f"sleep 60 & echo $! > {pidfile}; exit 0"],
-                          provider="t", stdin_data=None, timeout=1)
+        # the leader starts a sleeper that keeps our stdout pipe open, records its pid and exits at once
+        await run_process([sys.executable, "-c", textwrap.dedent(f"""
+            import subprocess, sys, pathlib
+            child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], stdout=sys.stdout)
+            pathlib.Path({str(pidfile)!r}).write_text(str(child.pid))
+        """)], provider="t", stdin_data=None, timeout=3)
     assert e.value.kind.value == "timeout"
     await asyncio.sleep(0.2)
-    assert not _alive(int(pidfile.read_text()))
+    assert not _alive(int(pidfile.read_text(encoding="utf-8")))
 
 
 async def test_parser_failure_terminates_agent(tmp_path):
@@ -215,11 +235,15 @@ async def test_parser_failure_terminates_agent(tmp_path):
         raise RuntimeError("bad event")
 
     with pytest.raises(ProviderError) as e:
-        await run_process(["/bin/sh", "-c", f"echo $$ > {pidfile}; echo x; sleep 60"],
-                          provider="t", stdin_data=None, timeout=30, on_line=boom)
+        await run_process([sys.executable, "-c", textwrap.dedent(f"""
+            import os, pathlib, time
+            pathlib.Path({str(pidfile)!r}).write_text(str(os.getpid()))
+            print("x", flush=True)
+            time.sleep(60)
+        """)], provider="t", stdin_data=None, timeout=30, on_line=boom)
     assert e.value.kind.value == "protocol"
     await asyncio.sleep(0.2)
-    assert not _alive(int(pidfile.read_text()))
+    assert not _alive(int(pidfile.read_text(encoding="utf-8")))
 
 
 async def test_opencode_string_error_event_is_reported_not_crashing(tmp_path):
@@ -227,3 +251,30 @@ async def test_opencode_string_error_event_is_reported_not_crashing(tmp_path):
     with pytest.raises(ProviderError) as e:
         await OpenCodeProvider(OpenCodeConfig(executable=exe)).run(REQ)
     assert "rate limited" in str(e.value)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe batch-file argument parsing")
+async def test_batch_file_agent_refuses_cmd_metacharacters(tmp_path):
+    from bugmind.providers.process import run_process
+    exe = script(tmp_path, "agent", "print('ran')")
+    marker = tmp_path / "pwned"
+    with pytest.raises(ProviderError) as e:
+        await run_process([exe, f'x" & type nul > "{marker}'], provider="t", stdin_data=None, timeout=10)
+    assert "cmd.exe" in str(e.value) and not marker.exists()
+    out = await run_process([exe, "plain arg"], provider="t", stdin_data=None, timeout=10)
+    assert out.stdout.strip() == "ran"
+
+
+async def test_agent_tree_is_gone_after_a_normal_exit(tmp_path):
+    """A background helper the agent leaves behind is killed once the agent's answer is complete."""
+    from bugmind.providers.process import run_process
+    pidfile = tmp_path / "pid"
+    await run_process([sys.executable, "-c", textwrap.dedent(f"""
+        import subprocess, sys, pathlib
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+        pathlib.Path({str(pidfile)!r}).write_text(str(child.pid))
+        print("done")
+    """)], provider="t", stdin_data=None, timeout=30)
+    await asyncio.sleep(0.3)
+    assert not _alive(int(pidfile.read_text(encoding="utf-8")))

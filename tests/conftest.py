@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -21,7 +22,8 @@ def isolated_env(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     # Hide the developer's real agent CLIs (~/.local/bin/claude, ~/.opencode/bin/opencode): tests must
     # never call a real model, and provider auto-detection must not depend on this machine.
-    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setenv("PATH", os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
+                       if sys.platform == "win32" else "/usr/bin:/bin")
     monkeypatch.delenv("FAKE_AGENT_RECORD", raising=False)
     for var in ("FAKE_AGENT_MODE", "FAKE_AGENT_RELATION", "FAKE_AGENT_MATCH", "FAKE_AGENT_PATTERN",
                 "FAKE_AGENT_QUESTIONS", "FAKE_AGENT_RULE_TITLE", "FAKE_AGENT_RULE_ITEMS", "FAKE_AGENT_SEVERITY"):

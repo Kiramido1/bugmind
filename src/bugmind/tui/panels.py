@@ -162,6 +162,15 @@ def _native_copy(text: str) -> bool:
     import shutil
     import subprocess
 
+    import sys
+    if sys.platform == "win32":  # clip.exe reads UTF-16LE when the input starts with a BOM (keeps Arabic intact)
+        clip = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "clip.exe")
+        try:
+            subprocess.run([clip], input=b"\xff\xfe" + text.encode("utf-16-le"), stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=5, check=True)
+            return True
+        except (OSError, subprocess.SubprocessError):
+            return False
     helpers = []
     if os.environ.get("WAYLAND_DISPLAY"):
         helpers.append(["wl-copy"])

@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import sys
 
 import pytest
@@ -31,7 +32,6 @@ def shots(tmp_path):
 def custom_agent(record):
     assert runner.invoke(cli, ["config", "set", "agent", "custom"]).exit_code == 0
     assert runner.invoke(cli, ["config", "set", "provider.custom.command", f"['{sys.executable}', '{FAKE_AGENT}']"]).exit_code == 0
-    import os
     os.environ["FAKE_AGENT_RECORD"] = str(record)
 
 
@@ -79,7 +79,7 @@ def test_cli_add_with_image_reaches_agent_and_is_archived(shots, tmp_path):
     custom_agent(record)
     r = runner.invoke(cli, ["add", "--image", str(shots / "err.png"), "Checkout returns 500"])
     assert r.exit_code == 0, r.output
-    seen = json.loads(record.read_text())
+    seen = json.loads(record.read_text(encoding="utf-8"))
     assert seen["images"][0]["media_type"] == "image/png" and seen["images"][0]["bytes"] > 0
     assert "1 screenshot(s) of the bug are attached" in seen["prompt"]
     from bugmind.service import BugMindService
@@ -113,11 +113,12 @@ async def test_tui_drag_and_drop_screenshot_then_describe(shots, tmp_path):
             await pilot.pause(0.1)
             if not chat.busy and len(app.service.store) == 1:
                 break
-        assert json.loads(record.read_text())["images"][0]["name"] == "with space.jpg"
+        assert json.loads(record.read_text(encoding="utf-8"))["images"][0]["name"] == "with space.jpg"
         assert chat.pending == [] and not app.query_one("#attach-bar").display
         assert app.service.store.get("BUG-0001").attachments == ["attachments/BUG-0001/1.jpg"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="X11/Wayland clipboard tools")
 def test_clipboard_image_text_and_copied_files(monkeypatch, shots):
     import bugmind.images as images
     clip = {}
@@ -140,6 +141,26 @@ def test_clipboard_image_text_and_copied_files(monkeypatch, shots):
         images.read_clipboard()
 
 
+def test_windows_clipboard_protocol(monkeypatch, shots):
+    """The PowerShell helper's output (kind line + base64 lines) is parsed and validated like any paste."""
+    import bugmind.images as images
+    b64 = lambda b: base64.b64encode(b).decode()  # noqa: E731
+    out = {}
+    monkeypatch.setattr(images, "_run", lambda argv, timeout=3: out.get("v"))
+    out["v"] = f"image\r\n{b64(PNG)}\r\n".encode()
+    imgs, text = images._read_clipboard_windows()
+    assert text is None and imgs[0].path.read_bytes() == PNG
+    out["v"] = f"files\r\n{b64(str(shots / 'with space.jpg').encode())}\r\n{b64(b'notes.txt')}\r\n".encode()
+    assert [i.name for i in images._read_clipboard_windows()[0]] == ["with space.jpg"]
+    out["v"] = f"text\r\n{b64('سطر\nline'.encode())}\r\n".encode()
+    assert images._read_clipboard_windows() == ([], "سطر\nline")
+    out["v"] = None
+    assert images._read_clipboard_windows() == ([], None)
+    out["v"] = f"image\r\n{b64(b'not an image')}\r\n".encode()
+    with pytest.raises(ImageError):
+        images._read_clipboard_windows()
+
+
 async def test_tui_ctrl_v_attaches_clipboard_image(monkeypatch, shots, tmp_path):
     custom_agent(tmp_path / "seen.json")
     import bugmind.tui.chat as chat_mod
@@ -156,3 +177,8 @@ async def test_tui_ctrl_v_attaches_clipboard_image(monkeypatch, shots, tmp_path)
         await pilot.press("ctrl+v")
         await pilot.pause(0.3)
         assert app.query_one(Composer).text == "pasted text"
+        app.query_one(ChatView).pending = []
+        monkeypatch.setattr(chat_mod, "read_clipboard", lambda: ([load_image(shots / "err.png")], None))
+        await pilot.press("alt+v")  # Windows Terminal keeps Ctrl+V for itself
+        await pilot.pause(0.3)
+        assert [i.name for i in app.query_one(ChatView).pending] == ["err.png"]

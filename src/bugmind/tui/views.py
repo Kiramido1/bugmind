@@ -542,7 +542,7 @@ class TemplatesView(Horizontal):
 class SettingsView(VerticalScroll):
     FIELDS = [
         ("storage.project", "Active project (lowercase slug)"),
-        ("storage.data_dir", "Storage directory (blank = ~/.local/share/bugmind)"),
+        ("storage.data_dir", "Storage directory (blank = default, see `bugmind config path`)"),
         ("analysis.duplicate_threshold", "Near-duplicate similarity threshold (0.5–1.0)"),
         ("storage.backups_to_keep", "Memory backups to keep"),
     ]

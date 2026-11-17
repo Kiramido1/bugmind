@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from collections.abc import Callable
@@ -96,7 +95,7 @@ def agent_workdir() -> Path:
     Running agents here prevents them from picking up project files or
     instructions (e.g. CLAUDE.md / AGENTS.md) from wherever bugmind was launched.
     """
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    path = Path(base) / "bugmind" / "agent-workdir"
+    from bugmind.config import cache_dir
+    path = cache_dir() / "agent-workdir"
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     return path

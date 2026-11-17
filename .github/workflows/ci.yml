@@ -10,9 +10,11 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         python: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
@@ -20,11 +22,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install
-        run: uv venv .venv && uv pip install --python .venv/bin/python -e ".[dev]"
+        run: uv venv .venv && uv pip install --python .venv -e ".[dev]"
       - name: Lint
-        run: .venv/bin/ruff check src tests
+        run: uv run --no-sync ruff check src tests
       - name: Test
-        run: .venv/bin/python -m pytest
+        run: uv run --no-sync python -m pytest
 
   installer:
     runs-on: ubuntu-latest
@@ -35,3 +37,39 @@ jobs:
         run: uvx --from shellcheck-py shellcheck -s sh install.sh
       - name: Install from checkout
         run: ./install.sh && bugmind --version && bugmind --help >/dev/null
+
+  installer-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install from checkout (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          .\install.ps1
+          bugmind --version
+      - name: End-to-end with a fake agent (Arabic input, real subprocess, real storage)
+        shell: pwsh
+        run: |
+          $env:Path = "$HOME\.local\bin;$env:Path"
+          [Console]::OutputEncoding = [Text.UTF8Encoding]::new()
+          function Check($what) { if ($LASTEXITCODE -ne 0) { throw "$what failed ($LASTEXITCODE)" } }
+          function Expect($text, $needle) { if (-not ($text | Out-String).Contains($needle)) { throw "missing '$needle'" } }
+          bugmind init --provider custom; Check init
+          $agent = (Resolve-Path tests\fake_agent.py).Path -replace '\\', '/'
+          bugmind config set provider.custom.command "['python', '$agent']"; Check config
+          bugmind add "GET /api/v1/orders?ordering= بيرجع 500 بدل validation error" --yes; Check add
+          Expect (bugmind list) "BUG-0001"
+          Expect (bugmind show BUG-0001 --original) "بيرجع"
+          bugmind status BUG-0001 confirmed; Check status
+          Expect (bugmind memory) "RULE-001"
+          bugmind export all --zip -o "$env:RUNNER_TEMP\export"; Check export
+          Expect (bugmind config path) "AppData"
+      - name: Uninstall
+        shell: powershell
+        run: .\install.ps1 -Uninstall
+      - name: Install from GitHub archive (PowerShell 7, as `irm | iex` would)
+        shell: pwsh
+        run: |
+          $env:Path = "$HOME\.local\bin;$env:Path"
+          & ([scriptblock]::Create((Get-Content -Raw .\install.ps1))) -Ref ${{ github.sha }}
+          bugmind --version

@@ -112,11 +112,29 @@ KEY_ALIASES = {
 }
 
 
+def _user_base(xdg_var: str, posix_default: str, windows_var: str) -> Path:
+    """$XDG_* when set; else %APPDATA% / %LOCALAPPDATA% on Windows; else the XDG default under $HOME."""
+    if env := os.environ.get(xdg_var):
+        return Path(env)
+    if os.name == "nt":
+        return Path(os.environ.get(windows_var) or Path.home())
+    return Path.home() / posix_default
+
+
+def cache_dir() -> Path:
+    """Scratch space (pasted screenshots, the agents' empty workdir). Windows: the user's %TEMP%."""
+    if env := os.environ.get("XDG_CACHE_HOME"):
+        return Path(env) / "bugmind"
+    if os.name == "nt":
+        import tempfile
+        return Path(tempfile.gettempdir()) / "bugmind"
+    return Path.home() / ".cache" / "bugmind"
+
+
 def config_dir() -> Path:
     if env := os.environ.get("BUGMIND_CONFIG_DIR"):
         return Path(env).expanduser()
-    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(base) / "bugmind"
+    return _user_base("XDG_CONFIG_HOME", ".config", "APPDATA") / "bugmind"
 
 
 def config_path() -> Path:
@@ -124,8 +142,7 @@ def config_path() -> Path:
 
 
 def default_data_root() -> Path:
-    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(base) / "bugmind"
+    return _user_base("XDG_DATA_HOME", ".local/share", "LOCALAPPDATA") / "bugmind"
 
 
 def data_root(cfg: AppConfig) -> Path:

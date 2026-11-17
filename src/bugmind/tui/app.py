@@ -156,7 +156,7 @@ KEYS_HELP = """# BugMind — keyboard shortcuts
 | `Ctrl+N` | New chat |
 | `Ctrl+B` | Bug Analysis mode |
 | `Ctrl+H` / `F3` | Bug history |
-| `Ctrl+V` | Paste: an image / copied image file on the clipboard is attached, text is inserted |
+| `Ctrl+V` / `Alt+V` | Paste: an image / copied image file on the clipboard is attached, text is inserted (Alt+V in Windows Terminal) |
 | `Ctrl+L` | Clear the input box |
 | `F2` | Focus the sidebar |
 | `Ctrl+S` | Save the template being edited (Templates screen) |

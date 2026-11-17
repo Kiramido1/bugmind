@@ -1,4 +1,8 @@
-"""Safe asyncio subprocess execution: argv only (never a shell), timeouts, group kill."""
+"""Safe asyncio subprocess execution: argv only (never a shell), timeouts, process-tree kill.
+
+POSIX: the agent gets its own session and the whole process group is signalled.
+Windows: the agent is put in a Job Object, and terminating the job kills every descendant.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +10,7 @@ import asyncio
 import os
 import shutil
 import signal
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +20,54 @@ from bugmind.providers.base import ErrorKind, ProviderError
 
 STDERR_CAP = 64_000
 LINE_LIMIT = 32 * 1024 * 1024
+_BATCH_UNSAFE = set('"%!^&|<>\r\n')  # cmd.exe re-parses a .cmd/.bat's arguments (BatBadBut)
+
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _k32.CreateJobObjectW.restype = wintypes.HANDLE
+    _k32.CreateJobObjectW.argtypes = (ctypes.c_void_p, wintypes.LPCWSTR)
+    _k32.OpenProcess.restype = wintypes.HANDLE
+    _k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    _k32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD)
+    _k32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    _k32.TerminateJobObject.argtypes = (wintypes.HANDLE, wintypes.UINT)
+    _k32.CloseHandle.argtypes = (wintypes.HANDLE,)
+
+    class _BasicLimits(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                    ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class _ExtendedLimits(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", _BasicLimits), ("IoInfo", ctypes.c_uint64 * 6),
+                    ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    def _attach_job(proc: asyncio.subprocess.Process) -> None:
+        """Put *proc* in a kill-on-close Job Object so its children can be killed with it.
+
+        shortcut: assigned right after spawn, so a child started in the first microseconds escapes the job;
+        upgrade to CREATE_SUSPENDED + resume if an agent ever forks that early.
+        """
+        job = _k32.CreateJobObjectW(None, None)
+        if not job:
+            return
+        info = _ExtendedLimits()
+        info.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        handle = _k32.OpenProcess(0x0001 | 0x0100, False, proc.pid)  # PROCESS_TERMINATE | PROCESS_SET_QUOTA
+        ok = bool(handle) and _k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)) \
+            and _k32.AssignProcessToJobObject(job, handle)
+        if handle:
+            _k32.CloseHandle(handle)
+        if ok:
+            proc._bugmind_job = job  # type: ignore[attr-defined]
+        else:
+            _k32.CloseHandle(job)
 
 
 @dataclass
@@ -30,7 +83,7 @@ def resolve_executable(executable: str, provider: str) -> str:
     if not executable:
         raise ProviderError(ErrorKind.MISSING, "No executable configured", provider)
     expanded = os.path.expanduser(executable)
-    if os.sep in expanded:
+    if os.sep in expanded or (os.altsep and os.altsep in expanded):
         if os.path.isfile(expanded) and os.access(expanded, os.X_OK):
             return expanded
         raise ProviderError(ErrorKind.MISSING, f"Executable not found or not executable: {expanded}", provider)
@@ -42,7 +95,18 @@ def resolve_executable(executable: str, provider: str) -> str:
     return found
 
 
-def _kill_group(proc: asyncio.subprocess.Process, sig: int) -> None:
+def _kill_group(proc: asyncio.subprocess.Process, force: bool) -> None:
+    if sys.platform == "win32":  # no graceful signal for console agents: terminate the whole job
+        job = getattr(proc, "_bugmind_job", None)
+        if job:
+            _k32.TerminateJobObject(job, 1)
+            return
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        return
+    sig = signal.SIGKILL if force else signal.SIGTERM
     try:
         os.killpg(proc.pid, sig)
     except (ProcessLookupError, PermissionError):
@@ -52,15 +116,23 @@ def _kill_group(proc: asyncio.subprocess.Process, sig: int) -> None:
             pass
 
 
+def _release(proc: asyncio.subprocess.Process) -> None:
+    """Final sweep: kill anything the agent left running in the background (and free the Windows job)."""
+    _kill_group(proc, force=True)
+    if sys.platform == "win32" and (job := getattr(proc, "_bugmind_job", None)):
+        _k32.CloseHandle(job)
+        proc._bugmind_job = None  # type: ignore[attr-defined]
+
+
 async def _terminate(proc: asyncio.subprocess.Process, grace: float = 3.0) -> None:
     if proc.returncode is None:
-        _kill_group(proc, signal.SIGTERM)
+        _kill_group(proc, force=False)
         try:
             await asyncio.wait_for(proc.wait(), grace)
         except TimeoutError:
             pass
     # Always sweep the group: the leader may be gone while a background child still runs.
-    _kill_group(proc, signal.SIGKILL)
+    _release(proc)
     await proc.wait()
 
 
@@ -78,6 +150,12 @@ async def run_process(
     full_env = dict(os.environ)
     if env:
         full_env.update(env)
+    if sys.platform == "win32" and argv[0].lower().endswith((".cmd", ".bat")):
+        if bad := next((a for a in argv[1:] if _BATCH_UNSAFE & set(a)), None):
+            raise ProviderError(
+                ErrorKind.PROCESS,
+                f"Refusing to pass {bad!r} to the batch file {argv[0]}: cmd.exe would interpret its special "
+                "characters. Rename the file or point the provider at the agent's .exe.", provider)
     started = time.monotonic()
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -87,8 +165,9 @@ async def run_process(
             stderr=asyncio.subprocess.PIPE,
             env=full_env,
             cwd=str(cwd) if cwd else None,
-            start_new_session=True,  # own process group so we can kill children too
             limit=LINE_LIMIT,
+            **({"creationflags": 0x00000200} if sys.platform == "win32"  # CREATE_NEW_PROCESS_GROUP
+               else {"start_new_session": True}),  # own process group so we can kill children too
         )
     except FileNotFoundError as exc:
         raise ProviderError(ErrorKind.MISSING, f"Executable not found: {argv[0]}", provider) from exc
@@ -96,6 +175,8 @@ async def run_process(
         raise ProviderError(ErrorKind.MISSING, f"Permission denied executing {argv[0]}", provider) from exc
     except OSError as exc:  # e.g. E2BIG: argument list too long
         raise ProviderError(ErrorKind.PROCESS, f"Could not start {argv[0]}: {exc.strerror or exc}", provider) from exc
+    if sys.platform == "win32":
+        _attach_job(proc)
 
     stdout_parts: list[str] = []
     stderr_parts: list[str] = []
@@ -123,7 +204,7 @@ async def run_process(
             line = raw.decode("utf-8", errors="replace")
             stdout_parts.append(line)
             if on_line:
-                on_line(line.rstrip("\n"))
+                on_line(line.rstrip("\r\n"))
 
     async def read_stderr() -> None:
         assert proc.stderr is not None
@@ -150,7 +231,7 @@ async def run_process(
         if isinstance(exc, (ProviderError, asyncio.CancelledError)) or not isinstance(exc, Exception):
             raise
         raise ProviderError(ErrorKind.PROTOCOL, f"Could not read agent output: {exc}", provider) from exc
-    _kill_group(proc, signal.SIGKILL)  # reap anything the agent left running in the background
+    _release(proc)
     return ProcessOutput(returncode, "".join(stdout_parts), "".join(stderr_parts), time.monotonic() - started)
 
 

@@ -27,12 +27,12 @@ async def test_analyze_save_persists_report_and_memory(service):
     assert rec.id == "BUG-0001" and rec.pattern_ids == ["PAT-001"]
     assert rec.original_input == BUG1 and rec.provider == "custom"
     assert rec.analysis.category == "input-validation" and rec.status == ConfirmationStatus.UNCONFIRMED
-    assert res.report_path.read_text().startswith("- **Bug Title:** [Orders API]")
+    assert res.report_path.read_text(encoding="utf-8").startswith("- **Bug Title:** [Orders API]")
     mem = service.store.layout.memory_dir
-    prevention = (mem / "BACKEND_PREVENTION.md").read_text()
+    prevention = (mem / "BACKEND_PREVENTION.md").read_text(encoding="utf-8")
     assert "Candidate Rules" in prevention and "BUG-0001" in prevention  # single unconfirmed -> candidate
-    assert "PAT-001" in (mem / "BUG_PATTERNS.md").read_text()
-    assert "**Total recorded bugs:** 1" in (mem / "STATISTICS.md").read_text()
+    assert "PAT-001" in (mem / "BUG_PATTERNS.md").read_text(encoding="utf-8")
+    assert "**Total recorded bugs:** 1" in (mem / "STATISTICS.md").read_text(encoding="utf-8")
 
 
 async def test_recurrence_updates_existing_pattern_and_activates_rule(service, monkeypatch):
@@ -88,7 +88,7 @@ async def test_clarification_questions_mark_needs_info(service, monkeypatch):
 async def test_secrets_redacted_before_ai_and_storage(service):
     res = await add(service, BUG1 + " Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123")
     assert "abcdefghijklmnop" not in res.record.original_input and res.record.redactions == 1
-    assert "abcdefghijklmnop" not in service.store.layout.bugs_file.read_text()
+    assert "abcdefghijklmnop" not in service.store.layout.bugs_file.read_text(encoding="utf-8")
 
 
 async def test_status_change_adds_revision_and_updates_memory(service):
@@ -108,12 +108,12 @@ async def test_memory_rebuild_from_archive_after_deletion(service, monkeypatch):
     monkeypatch.setenv("FAKE_AGENT_MATCH", "PAT-001")
     await add(service, BUG2)
     mem = service.store.layout.memory_dir
-    before = (mem / "BUG_PATTERNS.md").read_text().split("\n", 3)[3]  # skip timestamp line
+    before = (mem / "BUG_PATTERNS.md").read_text(encoding="utf-8").split("\n", 3)[3]  # skip timestamp line
     for f in mem.glob("*.md"):
         f.unlink()
     (service.store.layout.reports_dir / "BUG-0001.md").unlink()
     service.rebuild_memory()
-    assert (mem / "BUG_PATTERNS.md").read_text().split("\n", 3)[3] == before
+    assert (mem / "BUG_PATTERNS.md").read_text(encoding="utf-8").split("\n", 3)[3] == before
     assert (service.store.layout.reports_dir / "BUG-0001.md").exists()
 
 
@@ -155,14 +155,14 @@ async def test_export_single_and_package(service, tmp_path):
     out = tmp_path / "out"
     out.mkdir()
     p = export_knowledge(service, "prevention", out)
-    assert p.name == "BACKEND_PREVENTION.md" and "RULE-001" in p.read_text()
+    assert p.name == "BACKEND_PREVENTION.md" and "RULE-001" in p.read_text(encoding="utf-8")
     with pytest.raises(ExportError):
         export_knowledge(service, "prevention", out)
     assert export_knowledge(service, "prevention", out, force=True) == p
     pkg = export_knowledge(service, "all", out)
     assert {f.name for f in pkg.iterdir()} == {"BACKEND_PREVENTION.md", "BUG_PATTERNS.md", "STATISTICS.md",
                                                "bugs.jsonl", "reports", "MANIFEST.json"}
-    assert json.loads((pkg / "MANIFEST.json").read_text())["bugs"] == 1
+    assert json.loads((pkg / "MANIFEST.json").read_text(encoding="utf-8"))["bugs"] == 1
     z = export_knowledge(service, "all", tmp_path / "zips" if (tmp_path / "zips").mkdir() is None else out, as_zip=True)
     assert z.suffix == ".zip" and any(n.endswith("reports/BUG-0001.md") for n in zipfile.ZipFile(z).namelist())
     with pytest.raises(ExportError):
